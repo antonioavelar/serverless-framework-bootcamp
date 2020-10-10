@@ -1,0 +1,70 @@
+service:
+  name: serverless-framework-bootcamp
+
+plugins:
+  - serverless-bundle
+  - serverless-pseudo-parameters
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  memorySize: 256
+  stage: ${opt:stage, 'dev'}
+  region: eu-west-1
+  environment:
+    AUCTIONS_TABLE_NAME: ${self:custom.AuctionsTable.name}
+    AUTH0_PUBLIC_KEY: ${file(secret.pem)}
+  iamRoleStatements:
+    - ${file(iam/AuctionsTable.yml):AuctionsTableIAM}
+
+resources:
+  # cloud formation syntax
+  Resources:
+    AuctionsTable: ${file(resources/AuctionsTable.yml):AuctionsTable}
+    GatewayResponse: ${file(resources/GatewayResponse.yml):GatewayResponse}
+    AuthFailureGatewayResponse: ${file(resources/AuthFailureGatewayResponse.yml):AuthFailureGatewayResponse}
+
+functions:
+  auth:
+    handler: src/handlers/auth.handler
+    cors: true
+
+  createAuction:
+    handler: src/handlers/createAuction.handler
+    events:
+      - http:
+          method: POST
+          authorizer: auth
+          path: /auction
+  getAuctions:
+    handler: src/handlers/getAuctions.handler
+    events:
+      - http:
+          method: GET
+          authorizer: auth
+          path: /auctions
+  getAuction:
+    handler: src/handlers/getAuction.handler
+    events:
+      - http:
+          method: GET
+          authorizer: auth
+          path: /auction/{id}
+  placeBid:
+    handler: src/handlers/placeBid.handler
+    events:
+      - http:
+          method: PATCH
+          authorizer: auth
+          path: /auction/{id}/bid
+  processAuctions:
+    handler: src/handlers/processAuctions.handler
+    events:
+      - schedule: rate(1 minute)
+
+custom:
+  AuctionsTable: 
+    name: !Ref AuctionsTable
+    arn: !GetAtt AuctionsTable.Arn
+  bundle:
+    linting: false
